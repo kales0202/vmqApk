@@ -12,7 +12,7 @@ import android.os.Looper;
 import android.os.PowerManager;
 import android.service.notification.NotificationListenerService;
 import android.service.notification.StatusBarNotification;
-import android.support.v4.app.NotificationCompat;
+import androidx.core.app.NotificationCompat;
 import android.text.TextUtils;
 import android.util.Log;
 import android.widget.Toast;
@@ -302,7 +302,7 @@ public class NeNotificationService2 extends NotificationListenerService {
         call.enqueue(new Callback() {
             @Override
             public void onFailure(Call call, IOException e) {
-                Log.d(TAG, "onResponse  push: 请求失败");
+                Log.e(TAG, "onResponse  push: 请求失败", e);
                 foregroundPost(url + "&force_push=true");
                 releaseWakeLock();
             }

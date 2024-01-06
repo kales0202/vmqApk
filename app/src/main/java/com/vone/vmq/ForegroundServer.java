@@ -14,7 +14,7 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.os.SystemClock;
-import android.support.annotation.RequiresApi;
+import androidx.annotation.RequiresApi;
 import android.text.TextUtils;
 import android.util.Log;
 
@@ -118,12 +118,13 @@ public class ForegroundServer extends Service {
         handler.postDelayed(new Runnable() {
             @Override
             public void run() {
+                Log.d("ForegroundServer", "retry push: " + url + ", count: " + count);
                 Request request = new Request.Builder().url(url).method("GET", null).build();
                 Call call = Utils.getOkHttpClient().newCall(request);
                 call.enqueue(new Callback() {
                     @Override
                     public void onFailure(Call call, IOException e) {
-                        Log.d("ForegroundServer", "onResponse  push: 请求失败");
+                        Log.e("ForegroundServer", "onResponse  push: 请求失败", e);
                         tryPushByUrl(url, count - 1);
                     }
 

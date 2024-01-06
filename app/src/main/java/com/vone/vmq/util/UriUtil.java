@@ -1,5 +1,6 @@
 package com.vone.vmq.util;
 
+import android.annotation.SuppressLint;
 import android.annotation.TargetApi;
 import android.content.Context;
 import android.content.CursorLoader;
@@ -64,6 +65,7 @@ public class UriUtil {
     /**
      * 适配api11-api18,根据uri获取图片的绝对路径
      */
+    @SuppressLint("Range")
     private static String getRealPathFromUri_Api11To18(Context context, Uri uri) {
         String filePath = null;
         String[] projection = {MediaStore.Images.Media.DATA};
@@ -81,6 +83,7 @@ public class UriUtil {
     /**
      * 适配api11以下(不包括api11),根据uri获取图片的绝对路径
      */
+    @SuppressLint("Range")
     private static String getRealPathFromUri_BelowApi11(Context context, Uri uri) {
         String filePath = null;
         String[] projection = {MediaStore.Images.Media.DATA};
