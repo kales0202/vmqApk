@@ -12,13 +12,16 @@ import android.os.Looper;
 import android.os.PowerManager;
 import android.service.notification.NotificationListenerService;
 import android.service.notification.StatusBarNotification;
-import androidx.core.app.NotificationCompat;
 import android.text.TextUtils;
 import android.util.Log;
 import android.widget.Toast;
-
+import androidx.core.app.NotificationCompat;
 import com.vone.qrcode.R;
-
+import com.vone.vmq.util.API;
+import okhttp3.Call;
+import okhttp3.Callback;
+import okhttp3.Request;
+import okhttp3.Response;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -30,21 +33,80 @@ import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
 
-import okhttp3.Call;
-import okhttp3.Callback;
-import okhttp3.Request;
-import okhttp3.Response;
-
 public class NeNotificationService2 extends NotificationListenerService {
+    public static boolean isRunning;
     private static String TAG = "NeNotificationService2";
     private final Handler handler = new Handler(Looper.getMainLooper());
     private String host = "";
     private String key = "";
     private Thread newThread = null;
     private PowerManager.WakeLock mWakeLock = null;
-    public static boolean isRunning;
 
-    //申请设备电源锁
+    /**
+     * 如果出现无法通知的情况，进入前台，然后主动打开通知
+     */
+    public static void enterForeground(Context context, String title, String text, String extra) {
+        if (context == null) return;
+        Log.i(TAG, "enter fore ground");
+        Intent intent = new Intent(context, ForegroundServer.class);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        intent.putExtra(ForegroundServer.GET_NOTIFY_TITLE, title == null ? "" : title);
+        intent.putExtra(ForegroundServer.GET_NOTIFY_TEXT, text == null ? "" : text);
+        intent.putExtra(ForegroundServer.GET_NOTIFY_EXTRA, extra == null ? "" : extra);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.startForegroundService(intent);
+        } else {
+            context.startService(intent);
+        }
+    }
+
+    public static void exitForeground(Context context) {
+        if (context == null) return;
+        Log.i(TAG, "exitForeground");
+
+        Intent intent1 = new Intent();
+        intent1.setAction(Constant.FINISH_FOREGROUND_SERVICE);
+        context.sendBroadcast(intent1);
+    }
+
+    public static String getMoney(String content) {
+        List<String> ss = new ArrayList<>();
+        for (String sss : content.replaceAll(",", "")
+                .replaceAll("[^0-9.]", ",").split(",")) {
+            if (sss.length() > 0)
+                ss.add(sss);
+        }
+        if (ss.size() < 1) {
+            return null;
+        } else {
+            return ss.get(ss.size() - 1);
+        }
+    }
+
+    public static String md5(String string) {
+        if (TextUtils.isEmpty(string)) {
+            return "";
+        }
+        MessageDigest md5 = null;
+        try {
+            md5 = MessageDigest.getInstance("MD5");
+            byte[] bytes = md5.digest(string.getBytes());
+            StringBuilder result = new StringBuilder();
+            for (byte b : bytes) {
+                String temp = Integer.toHexString(b & 0xff);
+                if (temp.length() == 1) {
+                    temp = "0" + temp;
+                }
+                result.append(temp);
+            }
+            return result.toString();
+        } catch (NoSuchAlgorithmException e) {
+            e.printStackTrace();
+        }
+        return "";
+    }
+
+    // 申请设备电源锁
     @SuppressLint("InvalidWakeLockTag")
     public void acquireWakeLock(final Context context) {
         handler.post(new Runnable() {
@@ -64,7 +126,7 @@ public class NeNotificationService2 extends NotificationListenerService {
 
     }
 
-    //释放设备电源锁
+    // 释放设备电源锁
     public void releaseWakeLock() {
         handler.post(new Runnable() {
             @Override
@@ -77,59 +139,27 @@ public class NeNotificationService2 extends NotificationListenerService {
         });
     }
 
-    //心跳进程
+    // 心跳进程
     public void initAppHeart() {
         Log.d(TAG, "开始启动心跳线程");
-        newThread = new Thread(new Runnable() {
-            @Override
-            public void run() {
-                Log.d(TAG, "心跳线程启动！");
-                while (isRunning && newThread == Thread.currentThread()) {
-                    SharedPreferences read = getSharedPreferences("vone", MODE_PRIVATE);
-                    host = read.getString("host", "");
-                    key = read.getString("key", "");
-
-                    //这里写入子线程需要做的工作
-                    String t = String.valueOf(new Date().getTime());
-                    String sign = md5(t + key);
-
-                    final String url = "http://" + host + "/appHeart?t=" + t + "&sign=" + sign;
-                    Request request = new Request.Builder().url(url).method("GET", null).build();
-                    Call call = Utils.getOkHttpClient().newCall(request);
-                    call.enqueue(new Callback() {
-                        @Override
-                        public void onFailure(Call call, IOException e) {
-                            // final String error = e.getMessage();
-                            // Toast.makeText(getApplicationContext(), "心跳状态错误，请检查配置是否正确!" + error, Toast.LENGTH_LONG).show();
-                            foregroundHeart(url);
-                        }
-
-                        //请求成功执行的方法
-                        @Override
-                        public void onResponse(Call call, Response response) throws IOException {
-                            try {
-                                Log.d(TAG, "onResponse heard: " + response.body().string());
-                            } catch (Exception e) {
-                                e.printStackTrace();
-                            }
-                            if (!response.isSuccessful()) {
-                                foregroundHeart(url);
-                            }
-                        }
-                    });
-                    try {
-                        Thread.sleep(30 * 1000);
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    }
+        newThread = new Thread(() -> {
+            Log.d(TAG, "心跳线程启动！");
+            while (isRunning && newThread == Thread.currentThread()) {
+                API.heartbeat(
+                        data -> Log.d(TAG, "heartbeat response data:" + data),
+                        error -> foregroundHeart(API.getUrlHeartbeat())
+                );
+                try {
+                    Thread.sleep(30 * 1000);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
                 }
             }
         });
-        newThread.start(); //启动线程
+        newThread.start(); // 启动线程
     }
 
-
-    //当收到一条消息的时候回调，sbn是收到的消息
+    // 当收到一条消息的时候回调，sbn是收到的消息
     @Override
     public void onNotificationPosted(StatusBarNotification sbn) {
         Log.d(TAG, "接受到通知消息");
@@ -225,17 +255,17 @@ public class NeNotificationService2 extends NotificationListenerService {
         }
     }
 
-    //当移除一条消息的时候回调，sbn是被移除的消息
+    // 当移除一条消息的时候回调，sbn是被移除的消息
     @Override
     public void onNotificationRemoved(StatusBarNotification sbn) {
 
     }
 
-    //当连接成功时调用，一般在开启监听后会回调一次该方法
+    // 当连接成功时调用，一般在开启监听后会回调一次该方法
     @Override
     public void onListenerConnected() {
         isRunning = true;
-        //开启心跳线程
+        // 开启心跳线程
         initAppHeart();
 
         handler.post(new Runnable() {
@@ -366,70 +396,6 @@ public class NeNotificationService2 extends NotificationListenerService {
                 }
             });
         }
-    }
-
-    /**
-     * 如果出现无法通知的情况，进入前台，然后主动打开通知
-     */
-    public static void enterForeground(Context context, String title, String text, String extra) {
-        if (context == null) return;
-        Log.i(TAG, "enter fore ground");
-        Intent intent = new Intent(context, ForegroundServer.class);
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        intent.putExtra(ForegroundServer.GET_NOTIFY_TITLE, title == null ? "" : title);
-        intent.putExtra(ForegroundServer.GET_NOTIFY_TEXT, text == null ? "" : text);
-        intent.putExtra(ForegroundServer.GET_NOTIFY_EXTRA, extra == null ? "" : extra);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            context.startForegroundService(intent);
-        } else {
-            context.startService(intent);
-        }
-    }
-
-    public static void exitForeground(Context context) {
-        if (context == null) return;
-        Log.i(TAG, "exitForeground");
-
-        Intent intent1 = new Intent();
-        intent1.setAction(Constant.FINISH_FOREGROUND_SERVICE);
-        context.sendBroadcast(intent1);
-    }
-
-    public static String getMoney(String content) {
-        List<String> ss = new ArrayList<>();
-        for (String sss : content.replaceAll(",", "")
-                .replaceAll("[^0-9.]", ",").split(",")) {
-            if (sss.length() > 0)
-                ss.add(sss);
-        }
-        if (ss.size() < 1) {
-            return null;
-        } else {
-            return ss.get(ss.size() - 1);
-        }
-    }
-
-    public static String md5(String string) {
-        if (TextUtils.isEmpty(string)) {
-            return "";
-        }
-        MessageDigest md5 = null;
-        try {
-            md5 = MessageDigest.getInstance("MD5");
-            byte[] bytes = md5.digest(string.getBytes());
-            StringBuilder result = new StringBuilder();
-            for (byte b : bytes) {
-                String temp = Integer.toHexString(b & 0xff);
-                if (temp.length() == 1) {
-                    temp = "0" + temp;
-                }
-                result.append(temp);
-            }
-            return result.toString();
-        } catch (NoSuchAlgorithmException e) {
-            e.printStackTrace();
-        }
-        return "";
     }
 
 }

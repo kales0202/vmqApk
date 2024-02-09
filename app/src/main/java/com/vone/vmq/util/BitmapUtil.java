@@ -25,10 +25,10 @@ public class BitmapUtil {
      */
     public static Bitmap decodeUri(Context context, Uri uri, int maxWidth, int maxHeight) {
         BitmapFactory.Options options = new BitmapFactory.Options();
-        options.inJustDecodeBounds = true; //只读取图片尺寸
+        options.inJustDecodeBounds = true; // 只读取图片尺寸
         readBitmapScale(context, uri, options);
 
-        //计算实际缩放比例
+        // 计算实际缩放比例
         int scale = 1;
         for (int i = 0; i < Integer.MAX_VALUE; i++) {
             if ((options.outWidth / scale > maxWidth &&
@@ -42,8 +42,8 @@ public class BitmapUtil {
         }
 
         options.inSampleSize = scale;
-        options.inJustDecodeBounds = false;//读取图片内容
-        options.inPreferredConfig = Bitmap.Config.RGB_565; //根据情况进行修改
+        options.inJustDecodeBounds = false;// 读取图片内容
+        options.inPreferredConfig = Bitmap.Config.RGB_565; // 根据情况进行修改
         Bitmap bitmap = null;
         try {
             bitmap = readBitmapData(context, uri, options);

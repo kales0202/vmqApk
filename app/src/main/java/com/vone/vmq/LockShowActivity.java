@@ -9,11 +9,25 @@ import android.os.Build;
 import android.os.Bundle;
 import android.view.WindowManager;
 import android.widget.TextView;
-
 import com.vone.qrcode.R;
 
 public class LockShowActivity extends Activity {
     private TextView showTv;
+    private final BroadcastReceiver finishActivityBroadcast = new BroadcastReceiver() {
+
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (Constant.FINISH_LOCK_SHOW_ACTIVITY.equals(intent.getAction())) {
+                if (!isFinishing()) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                        finishAndRemoveTask();
+                    }
+                }
+            } else if (Constant.UPDATA_MESSAGE_DATA_ACTION.equals(intent.getAction())) {
+                resetData(intent);
+            }
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -55,7 +69,6 @@ public class LockShowActivity extends Activity {
         showTv.setText(showTvText);
     }
 
-
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
@@ -67,20 +80,4 @@ public class LockShowActivity extends Activity {
         super.onDestroy();
         unregisterBroadCast();
     }
-
-    private final BroadcastReceiver finishActivityBroadcast = new BroadcastReceiver() {
-
-        @Override
-        public void onReceive(Context context, Intent intent) {
-            if (Constant.FINISH_LOCK_SHOW_ACTIVITY.equals(intent.getAction())) {
-                if (!isFinishing()) {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                        finishAndRemoveTask();
-                    }
-                }
-            } else if (Constant.UPDATA_MESSAGE_DATA_ACTION.equals(intent.getAction())) {
-                resetData(intent);
-            }
-        }
-    };
 }

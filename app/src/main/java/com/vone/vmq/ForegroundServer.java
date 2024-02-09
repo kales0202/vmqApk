@@ -14,26 +14,23 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.os.SystemClock;
-import androidx.annotation.RequiresApi;
 import android.text.TextUtils;
 import android.util.Log;
-
+import androidx.annotation.RequiresApi;
 import com.vone.qrcode.R;
-
-import org.json.JSONObject;
-
-import java.io.IOException;
-
 import okhttp3.Call;
 import okhttp3.Callback;
 import okhttp3.Request;
 import okhttp3.Response;
+import org.json.JSONObject;
+
+import java.io.IOException;
 
 @SuppressWarnings("FieldCanBeLocal")
 public class ForegroundServer extends Service {
     public static final String GET_NOTIFY_TITLE = "get_notify_title";
     public static final String GET_NOTIFY_TEXT = "get_notify_text";
-    //这里传 json 过来
+    // 这里传 json 过来
     public static final String GET_NOTIFY_EXTRA = "get_notify_extra";
 
     private final int FOREGROUND_ID = 1;
@@ -45,8 +42,33 @@ public class ForegroundServer extends Service {
 
     private final long MIN_SHOW_TIME = 2000;
     private final long MAX_SHOW_TIME = 20000;
-
+    private final Runnable stopServerRunnable = new Runnable() {
+        @Override
+        public void run() {
+            try {
+                finishLockActivity();
+                Intent intent1 = new Intent(App.getContext(), ForegroundServer.class);
+                stopService(intent1);
+            } catch (Exception ignore) {
+            }
+        }
+    };
     private long enterTime;
+    private final BroadcastReceiver finishServiceBroadcast = new BroadcastReceiver() {
+
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (Constant.FINISH_FOREGROUND_SERVICE.equals(intent.getAction())) {
+                long temp = SystemClock.elapsedRealtime() - enterTime;
+                handler.removeCallbacks(stopServerRunnable);
+                if (temp > MIN_SHOW_TIME) {
+                    handler.post(stopServerRunnable);
+                } else {
+                    handler.postDelayed(stopServerRunnable, MIN_SHOW_TIME - temp);
+                }
+            }
+        }
+    };
 
     @Override
     public void onCreate() {
@@ -92,9 +114,6 @@ public class ForegroundServer extends Service {
         try {
             JSONObject jsonObject = new JSONObject(extraStr);
             final String url = jsonObject.optString("url");
-            if (url == null) {
-                return;
-            }
             if (jsonObject.optBoolean("show", true)) {
                 startLockActivity(this.getString(R.string.app_is_post));
             }
@@ -183,8 +202,8 @@ public class ForegroundServer extends Service {
                 TextUtils.isEmpty(intent.getStringExtra(GET_NOTIFY_TEXT)) ? getString(R.string.click_close_notify)
                         : intent.getStringExtra(GET_NOTIFY_TEXT);
         Notification.Builder notificationBuilder = new Notification.Builder(this)
-                .setContentTitle(title)//设置通知标题
-                .setContentText(text)//设置通知内容
+                .setContentTitle(title)// 设置通知标题
+                .setContentText(text)// 设置通知内容
                 .setPriority(Notification.PRIORITY_MIN)
                 .setCategory(Notification.CATEGORY_SERVICE)
                 .setOngoing(true)
@@ -217,34 +236,6 @@ public class ForegroundServer extends Service {
         } catch (Exception ignore) {
         }
     }
-
-    private final Runnable stopServerRunnable = new Runnable() {
-        @Override
-        public void run() {
-            try {
-                finishLockActivity();
-                Intent intent1 = new Intent(App.getContext(), ForegroundServer.class);
-                stopService(intent1);
-            } catch (Exception ignore) {
-            }
-        }
-    };
-
-    private final BroadcastReceiver finishServiceBroadcast = new BroadcastReceiver() {
-
-        @Override
-        public void onReceive(Context context, Intent intent) {
-            if (Constant.FINISH_FOREGROUND_SERVICE.equals(intent.getAction())) {
-                long temp = SystemClock.elapsedRealtime() - enterTime;
-                handler.removeCallbacks(stopServerRunnable);
-                if (temp > MIN_SHOW_TIME) {
-                    handler.post(stopServerRunnable);
-                } else {
-                    handler.postDelayed(stopServerRunnable, MIN_SHOW_TIME - temp);
-                }
-            }
-        }
-    };
 
     private void startLockActivity(String msg) {
         Intent intent = new Intent(this, LockShowActivity.class);

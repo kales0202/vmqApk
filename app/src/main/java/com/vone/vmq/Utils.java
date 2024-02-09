@@ -1,8 +1,5 @@
 package com.vone.vmq;
 
-import static android.content.Context.NOTIFICATION_SERVICE;
-import static android.content.Context.POWER_SERVICE;
-
 import android.annotation.SuppressLint;
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -13,14 +10,21 @@ import android.content.Intent;
 import android.net.Uri;
 import android.os.PowerManager;
 import android.provider.Settings;
-
+import android.text.TextUtils;
 import com.vone.qrcode.R;
 import com.vone.vmq.util.FileUtils;
+import com.vone.vmq.util.VpayConstant;
+import okhttp3.Interceptor;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
 
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
@@ -28,9 +32,10 @@ import java.util.Date;
 import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 
-import okhttp3.OkHttpClient;
+import static android.content.Context.NOTIFICATION_SERVICE;
+import static android.content.Context.POWER_SERVICE;
 
-class Utils {
+public class Utils {
     public final static String GET_MESSAGE_KEY = "get_message_key";
     public static final String GET_SHOW_ACTIVITY_TYPE = "get_show_activity_type";
 
@@ -44,6 +49,7 @@ class Utils {
             synchronized (Utils.class) {
                 if (okHttpClient == null) {
                     okHttpClient = new OkHttpClient.Builder()
+                            .addInterceptor(new UserAgentInterceptor())
                             .connectTimeout(5, TimeUnit.SECONDS)
                             .readTimeout(5, TimeUnit.SECONDS)
                             .writeTimeout(5, TimeUnit.SECONDS)
@@ -71,7 +77,7 @@ class Utils {
                     FileUtils fileUtils = new FileUtils();
                     if (fileUtils.deleteFileSafely(file)) {
                         try {
-                            //noinspection ResultOfMethodCallIgnored
+                            // noinspection ResultOfMethodCallIgnored
                             file.createNewFile();
                         } catch (IOException e) {
                             e.printStackTrace();
@@ -221,5 +227,44 @@ class Utils {
         notificationBuild.setContentIntent(pendingIntent);
         // 正式发出通知
         manager.notify(id, notificationBuild.build());
+    }
+
+    public static String md5(String string) {
+        if (TextUtils.isEmpty(string)) {
+            return "";
+        }
+        MessageDigest md5;
+        try {
+            md5 = MessageDigest.getInstance("MD5");
+            byte[] bytes = md5.digest(string.getBytes());
+            StringBuilder result = new StringBuilder();
+            for (byte b : bytes) {
+                String temp = Integer.toHexString(b & 0xff);
+                if (temp.length() == 1) {
+                    temp = "0" + temp;
+                }
+                result.append(temp);
+            }
+            return result.toString();
+        } catch (NoSuchAlgorithmException e) {
+            e.printStackTrace();
+        }
+        return "";
+    }
+}
+
+/**
+ * 添加请求头
+ */
+class UserAgentInterceptor implements Interceptor {
+    @Override
+    public Response intercept(Chain chain) throws IOException {
+        long now = System.currentTimeMillis();
+        Request request = chain.request().newBuilder()
+                .header("Vpay-Account", VpayConstant.VPAY_ADMIN)
+                .header("Vpay-Time", String.valueOf(now))
+                .header("Vpay-Sign", Utils.md5(now + VpayConstant.SERVER_KEY))
+                .build();
+        return chain.proceed(request);
     }
 }

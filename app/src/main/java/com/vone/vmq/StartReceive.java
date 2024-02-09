@@ -1,14 +1,13 @@
 package com.vone.vmq;
 
-import static android.content.Context.POWER_SERVICE;
-
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.os.PowerManager;
 import android.util.Log;
-
 import com.vone.qrcode.R;
+
+import static android.content.Context.POWER_SERVICE;
 
 /**
  * Created by user68 on 2018/7/30.
@@ -21,6 +20,15 @@ public class StartReceive extends BroadcastReceiver {
     public static final String TRY_CLOSE_ACTIVITY_ACTION = "try_close_activity_action";
 
     static boolean isBootCompleted = false; // 标志是否已经开机发送过通知
+
+    static boolean checkBatteryWhiteList(Context context) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            PowerManager powerManager = (PowerManager) context.getSystemService(POWER_SERVICE);
+            if (powerManager == null) return true;
+            return powerManager.isIgnoringBatteryOptimizations(context.getPackageName());
+        }
+        return true;
+    }
 
     @Override
     public void onReceive(Context context, Intent intent) {
@@ -40,14 +48,5 @@ public class StartReceive extends BroadcastReceiver {
             startActivityIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             context.startActivity(startActivityIntent);
         }
-    }
-
-    static boolean checkBatteryWhiteList(Context context) {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-            PowerManager powerManager = (PowerManager) context.getSystemService(POWER_SERVICE);
-            if (powerManager == null) return true;
-            return powerManager.isIgnoringBatteryOptimizations(context.getPackageName());
-        }
-        return true;
     }
 }

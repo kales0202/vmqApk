@@ -11,7 +11,6 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Vibrator;
-import androidx.appcompat.app.AppCompatActivity;
 import android.text.TextUtils;
 import android.view.SurfaceHolder;
 import android.view.SurfaceHolder.Callback;
@@ -20,10 +19,7 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.ImageButton;
 import android.widget.Toast;
-
-import com.vone.qrcode.R;
-import com.vone.vmq.util.BitmapUtil;
-import com.vone.vmq.util.Constant;
+import androidx.appcompat.app.AppCompatActivity;
 import com.google.zxing.BarcodeFormat;
 import com.google.zxing.BinaryBitmap;
 import com.google.zxing.ChecksumException;
@@ -38,6 +34,9 @@ import com.google.zxing.decoding.InactivityTimer;
 import com.google.zxing.decoding.RGBLuminanceSource;
 import com.google.zxing.qrcode.QRCodeReader;
 import com.google.zxing.view.ViewfinderView;
+import com.vone.qrcode.R;
+import com.vone.vmq.util.BitmapUtil;
+import com.vone.vmq.util.Constant;
 
 import java.io.IOException;
 import java.util.Hashtable;
@@ -52,7 +51,16 @@ import java.util.Vector;
 public class CaptureActivity extends AppCompatActivity implements Callback {
 
     private static final int REQUEST_CODE_SCAN_GALLERY = 100;
-
+    private static final float BEEP_VOLUME = 0.10f;
+    private static final long VIBRATE_DURATION = 200L;
+    /**
+     * When the beep has finished playing, rewind to queue up another one.
+     */
+    private final OnCompletionListener beepListener = new OnCompletionListener() {
+        public void onCompletion(MediaPlayer mediaPlayer) {
+            mediaPlayer.seekTo(0);
+        }
+    };
     private CaptureActivityHandler handler;
     private ViewfinderView viewfinderView;
     private ImageButton back;
@@ -65,12 +73,47 @@ public class CaptureActivity extends AppCompatActivity implements Callback {
     private InactivityTimer inactivityTimer;
     private MediaPlayer mediaPlayer;
     private boolean playBeep;
-    private static final float BEEP_VOLUME = 0.10f;
     private boolean vibrate;
     private ProgressDialog mProgress;
+    //	private Button cancelScanButton;
     private String photo_path;
     private Bitmap scanBitmap;
-    //	private Button cancelScanButton;
+    private View.OnClickListener albumOnClick = new View.OnClickListener() {
+        @Override
+        public void onClick(View view) {
+            // 打开手机中的相册
+            Intent innerIntent = new Intent(Intent.ACTION_GET_CONTENT); //"android.intent.action.GET_CONTENT"
+            innerIntent.setType("image/*");
+            startActivityForResult(innerIntent, REQUEST_CODE_SCAN_GALLERY);
+        }
+    };
+    /**
+     * 闪光灯开关按钮
+     */
+    private View.OnClickListener flashListener = new View.OnClickListener() {
+        @Override
+        public void onClick(View view) {
+            try {
+                boolean isSuccess = CameraManager.get().setFlashLight(!isFlashOn);
+                if (!isSuccess) {
+                    Toast.makeText(CaptureActivity.this, "暂时无法开启闪光灯", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                if (isFlashOn) {
+                    // 关闭闪光灯
+                    btnFlash.setImageResource(R.drawable.flash_off);
+                    isFlashOn = false;
+                } else {
+                    // 开启闪光灯
+                    btnFlash.setImageResource(R.drawable.flash_on);
+                    isFlashOn = true;
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+    };
+
     /**
      * Called when the activity is first created.
      */
@@ -78,7 +121,7 @@ public class CaptureActivity extends AppCompatActivity implements Callback {
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_scanner);
-        //ViewUtil.addTopView(getApplicationContext(), this, R.string.scan_card);
+        // ViewUtil.addTopView(getApplicationContext(), this, R.string.scan_card);
         CameraManager.init(getApplication());
         viewfinderView = (ViewfinderView) findViewById(R.id.viewfinder_content);
         back = (ImageButton) findViewById(R.id.btn_back);
@@ -101,20 +144,9 @@ public class CaptureActivity extends AppCompatActivity implements Callback {
 
     }
 
-    private View.OnClickListener albumOnClick = new View.OnClickListener() {
-        @Override
-        public void onClick(View view) {
-            //打开手机中的相册
-            Intent innerIntent = new Intent(Intent.ACTION_GET_CONTENT); //"android.intent.action.GET_CONTENT"
-            innerIntent.setType("image/*");
-            startActivityForResult(innerIntent, REQUEST_CODE_SCAN_GALLERY);
-        }
-    };
-
-
     @Override
     protected void onActivityResult(final int requestCode, int resultCode, Intent data) {
-        if (resultCode==RESULT_OK) {
+        if (resultCode == RESULT_OK) {
             switch (requestCode) {
                 case REQUEST_CODE_SCAN_GALLERY:
                     handleAlbumPic(data);
@@ -126,10 +158,11 @@ public class CaptureActivity extends AppCompatActivity implements Callback {
 
     /**
      * 处理选择的图片
+     *
      * @param data
      */
     private void handleAlbumPic(Intent data) {
-        //获取选中图片的路径
+        // 获取选中图片的路径
         final Uri uri = data.getData();
 
         mProgress = new ProgressDialog(CaptureActivity.this);
@@ -145,7 +178,7 @@ public class CaptureActivity extends AppCompatActivity implements Callback {
                 if (result != null) {
                     Intent resultIntent = new Intent();
                     Bundle bundle = new Bundle();
-                    bundle.putString(Constant.INTENT_EXTRA_KEY_QR_SCAN ,result.getText());
+                    bundle.putString(Constant.INTENT_EXTRA_KEY_QR_SCAN, result.getText());
 
                     resultIntent.putExtras(bundle);
                     CaptureActivity.this.setResult(RESULT_OK, resultIntent);
@@ -159,6 +192,7 @@ public class CaptureActivity extends AppCompatActivity implements Callback {
 
     /**
      * 扫描二维码图片的方法
+     *
      * @param uri
      * @return
      */
@@ -167,7 +201,7 @@ public class CaptureActivity extends AppCompatActivity implements Callback {
             return null;
         }
         Hashtable<DecodeHintType, String> hints = new Hashtable<>();
-        hints.put(DecodeHintType.CHARACTER_SET, "UTF8"); //设置二维码内容的编码
+        hints.put(DecodeHintType.CHARACTER_SET, "UTF8"); // 设置二维码内容的编码
 
         scanBitmap = BitmapUtil.decodeUri(this, uri, 500, 500);
         RGBLuminanceSource source = new RGBLuminanceSource(scanBitmap);
@@ -207,7 +241,7 @@ public class CaptureActivity extends AppCompatActivity implements Callback {
         initBeepSound();
         vibrate = true;
 
-        //quit the scan view
+        // quit the scan view
 //		cancelScanButton.setOnClickListener(new OnClickListener() {
 //
 //			@Override
@@ -243,7 +277,7 @@ public class CaptureActivity extends AppCompatActivity implements Callback {
         inactivityTimer.onActivity();
         playBeepSoundAndVibrate();
         String resultString = result.getText();
-        //FIXME
+        // FIXME
         if (TextUtils.isEmpty(resultString)) {
             Toast.makeText(CaptureActivity.this, "Scan failed!", Toast.LENGTH_SHORT).show();
         } else {
@@ -332,8 +366,6 @@ public class CaptureActivity extends AppCompatActivity implements Callback {
         }
     }
 
-    private static final long VIBRATE_DURATION = 200L;
-
     private void playBeepSoundAndVibrate() {
         if (playBeep && mediaPlayer != null) {
             mediaPlayer.start();
@@ -343,40 +375,4 @@ public class CaptureActivity extends AppCompatActivity implements Callback {
             vibrator.vibrate(VIBRATE_DURATION);
         }
     }
-
-    /**
-     * When the beep has finished playing, rewind to queue up another one.
-     */
-    private final OnCompletionListener beepListener = new OnCompletionListener() {
-        public void onCompletion(MediaPlayer mediaPlayer) {
-            mediaPlayer.seekTo(0);
-        }
-    };
-
-    /**
-     *  闪光灯开关按钮
-     */
-    private View.OnClickListener flashListener = new View.OnClickListener() {
-        @Override
-        public void onClick(View view) {
-            try {
-                boolean isSuccess = CameraManager.get().setFlashLight(!isFlashOn);
-                if(!isSuccess){
-                    Toast.makeText(CaptureActivity.this, "暂时无法开启闪光灯", Toast.LENGTH_SHORT).show();
-                    return;
-                }
-                if (isFlashOn) {
-                    // 关闭闪光灯
-                    btnFlash.setImageResource(R.drawable.flash_off);
-                    isFlashOn = false;
-                } else {
-                    // 开启闪光灯
-                    btnFlash.setImageResource(R.drawable.flash_on);
-                    isFlashOn = true;
-                }
-            }catch (Exception e){
-                e.printStackTrace();
-            }
-        }
-    };
 }
