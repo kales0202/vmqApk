@@ -8,5 +8,5 @@
 .externalNativeBuild
 
 *.jks
+*.p12
 /app/authkey.jks
-
