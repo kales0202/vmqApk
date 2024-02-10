@@ -18,13 +18,9 @@ import android.text.TextUtils;
 import android.util.Log;
 import androidx.annotation.RequiresApi;
 import com.vone.qrcode.R;
-import okhttp3.Call;
-import okhttp3.Callback;
+import com.vone.vmq.util.HttpUtil;
 import okhttp3.Request;
-import okhttp3.Response;
 import org.json.JSONObject;
-
-import java.io.IOException;
 
 @SuppressWarnings("FieldCanBeLocal")
 public class ForegroundServer extends Service {
@@ -84,9 +80,7 @@ public class ForegroundServer extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         handler.removeCallbacks(stopServerRunnable);
         handler.postDelayed(stopServerRunnable, MAX_SHOW_TIME);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            updateNotify(intent);
-        }
+        updateNotify(intent);
         startForegroundActivity(intent);
         return super.onStartCommand(intent, flags, startId);
     }
@@ -125,49 +119,20 @@ public class ForegroundServer extends Service {
 
     private void tryPushByUrl(final String url, final int count) {
         if (count <= 0) {
-            handler.post(new Runnable() {
-                @Override
-                public void run() {
-                    NeNotificationService2.exitForeground(App.getContext());
-                }
-            });
+            handler.post(() -> NeNotificationService2.exitForeground(App.getContext()));
             return;
         }
         // 进行一个短暂的延迟再通知过去
-        handler.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                Log.d("ForegroundServer", "retry push: " + url + ", count: " + count);
-                Request request = new Request.Builder().url(url).method("GET", null).build();
-                Call call = Utils.getOkHttpClient().newCall(request);
-                call.enqueue(new Callback() {
-                    @Override
-                    public void onFailure(Call call, IOException e) {
-                        Log.e("ForegroundServer", "onResponse  push: 请求失败", e);
+        handler.postDelayed(() -> {
+            Log.d("ForegroundServer", "retry send: " + url + ", count: " + count);
+            Request request = new Request.Builder().url(url).method("GET", null).build();
+            HttpUtil.get(url,
+                    data -> Log.e("ForegroundServer", "请求成功, url: " + url),
+                    error -> {
+                        Log.e("ForegroundServer", "请求失败, url: " + url, error);
                         tryPushByUrl(url, count - 1);
                     }
-
-                    @Override
-                    public void onResponse(Call call, Response response) throws IOException {
-                        try {
-                            Log.d("ForegroundServer", "onResponse  push: " + response.body().string());
-                        } catch (Exception e) {
-                            e.printStackTrace();
-                        } finally {
-                            if (!response.isSuccessful()) {
-                                tryPushByUrl(url, count - 1);
-                            } else {
-                                handler.post(new Runnable() {
-                                    @Override
-                                    public void run() {
-                                        NeNotificationService2.exitForeground(App.getContext());
-                                    }
-                                });
-                            }
-                        }
-                    }
-                });
-            }
+            );
         }, MIN_SHOW_TIME);
     }
 

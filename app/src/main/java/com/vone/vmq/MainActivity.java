@@ -18,7 +18,6 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
 import android.text.TextUtils;
-import android.util.Log;
 import android.view.View;
 import android.widget.EditText;
 import android.widget.TextView;
@@ -28,7 +27,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import com.google.zxing.activity.CaptureActivity;
 import com.vone.qrcode.R;
-import com.vone.vmq.util.API;
+import com.vone.vmq.util.Api;
 import com.vone.vmq.util.Constant;
 import com.vone.vmq.util.VpayConstant;
 
@@ -37,16 +36,18 @@ public class MainActivity extends AppCompatActivity {
     private static final String TAG = "MainActivity";
     private final Handler handler = new Handler(Looper.getMainLooper());
     int id = 0;
-    private TextView txthost;
-    private TextView txtkey;
+    private TextView txtAccount;
+    private TextView txtHost;
+    private TextView txtKey;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        txthost = findViewById(R.id.txt_host);
-        txtkey = findViewById(R.id.txt_key);
+        txtAccount = findViewById(R.id.txt_account);
+        txtHost = findViewById(R.id.txt_host);
+        txtKey = findViewById(R.id.txt_key);
 
         // 检测通知使用权是否启用
         if (!isNotificationListenersEnabled()) {
@@ -61,12 +62,18 @@ public class MainActivity extends AppCompatActivity {
         }
         // 读入保存的配置数据并显示
         SharedPreferences read = getSharedPreferences("vone", MODE_PRIVATE);
-        VpayConstant.SERVER_HOST = read.getString("host", "");
+        VpayConstant.SERVER_ACCOUNT = read.getString("account", VpayConstant.VPAY_SUPER_ADMIN);
+        VpayConstant.SERVER_HOST = Utils.formatHost(read.getString("host", ""));
         VpayConstant.SERVER_KEY = read.getString("key", "");
 
-        if (!VpayConstant.SERVER_HOST.equals("") && !VpayConstant.SERVER_KEY.equals("")) {
-            txthost.setText(String.format(" 通知地址：%s", VpayConstant.SERVER_HOST));
-            txtkey.setText(String.format(" 通讯密钥：%s", VpayConstant.SERVER_KEY));
+        if (!TextUtils.isEmpty(VpayConstant.SERVER_ACCOUNT)) {
+            txtAccount.setText(String.format(" 通知账号：%s", VpayConstant.SERVER_ACCOUNT));
+        }
+        if (!TextUtils.isEmpty(VpayConstant.SERVER_HOST)) {
+            txtHost.setText(String.format(" 通知地址：%s", VpayConstant.SERVER_HOST));
+        }
+        if (!TextUtils.isEmpty(VpayConstant.SERVER_KEY)) {
+            txtKey.setText(String.format(" 通讯密钥：%s", VpayConstant.SERVER_KEY));
             VpayConstant.isOk = true;
         }
         Toast.makeText(MainActivity.this, "v免签开源免费免签系统 v1.8.1", Toast.LENGTH_SHORT).show();
@@ -94,37 +101,12 @@ public class MainActivity extends AppCompatActivity {
     // 手动配置
     public void doInput(View v) {
         final EditText inputServer = new EditText(this);
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("请输入配置数据").setView(inputServer)
-                .setNegativeButton("取消", null);
-        builder.setPositiveButton("确认", (dialog, which) -> {
-            String scanResult = inputServer.getText().toString();
-
-            String[] tmp = scanResult.split("/");
-            if (tmp.length != 2) {
-                Toast.makeText(MainActivity.this, "数据错误，请您输入网站上显示的配置数据!", Toast.LENGTH_SHORT).show();
-                return;
-            }
-            VpayConstant.SERVER_HOST = tmp[0];
-            VpayConstant.SERVER_KEY = tmp[1];
-
-            API.heartbeat(data -> Log.d(TAG, "onResponse: " + data));
-
-            if (tmp[0].contains("localhost")) {
-                Toast.makeText(MainActivity.this, "配置信息错误，本机调试请访问 本机局域网IP:8080(如192.168.1.101:8080) 获取配置信息进行配置!", Toast.LENGTH_LONG).show();
-                return;
-            }
-            // 将扫描出的信息显示出来
-            txthost.setText(String.format(" 通知地址：%s", tmp[0]));
-            txtkey.setText(String.format(" 通讯密钥：%s", tmp[1]));
-
-            SharedPreferences.Editor editor = getSharedPreferences("vone", MODE_PRIVATE).edit();
-            editor.putString("host", VpayConstant.SERVER_HOST);
-            editor.putString("key", VpayConstant.SERVER_KEY);
-            editor.apply();
-        });
+        AlertDialog.Builder builder = new AlertDialog.Builder(this)
+                .setTitle("请输入配置数据")
+                .setView(inputServer)
+                .setNegativeButton("取消", null)
+                .setPositiveButton("确认", (dialog, which) -> this.parseConfiguration(inputServer.getText().toString()));
         builder.show();
-
     }
 
     // 检测心跳
@@ -134,7 +116,7 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
-        API.heartbeat(
+        Api.heartbeat(
                 data -> handler.post(() -> Toast.makeText(MainActivity.this, "心跳返回：" + data, Toast.LENGTH_LONG).show()),
                 error -> handler.post(() -> Toast.makeText(MainActivity.this, "心跳状态错误，请检查配置是否正确!", Toast.LENGTH_SHORT).show())
         );
@@ -147,16 +129,13 @@ public class MainActivity extends AppCompatActivity {
         mNotificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel("1",
-                    "Channel1", NotificationManager.IMPORTANCE_DEFAULT);
+            NotificationChannel channel = new NotificationChannel("1", "Channel1", NotificationManager.IMPORTANCE_DEFAULT);
             channel.enableLights(true);
             channel.setLightColor(Color.GREEN);
             channel.setShowBadge(true);
             mNotificationManager.createNotificationChannel(channel);
 
-            Notification.Builder builder = new Notification.Builder(this, "1");
-
-            mNotification = builder
+            mNotification = new Notification.Builder(this, "1")
                     .setSmallIcon(R.mipmap.ic_launcher)
                     .setTicker("这是一条测试推送信息，如果程序正常，则会提示监听权限正常")
                     .setContentTitle("V免签测试推送")
@@ -170,8 +149,6 @@ public class MainActivity extends AppCompatActivity {
                     .setContentText("这是一条测试推送信息，如果程序正常，则会提示监听权限正常")
                     .build();
         }
-        // Toast.makeText(MainActivity.this, "已推送信息，如果权限，那么将会有下一条提示！", Toast.LENGTH_SHORT).show();
-
         mNotificationManager.notify(id++, mNotification);
     }
 
@@ -229,7 +206,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
@@ -237,25 +213,7 @@ public class MainActivity extends AppCompatActivity {
         if (requestCode == Constant.REQ_QR_CODE && resultCode == RESULT_OK) {
             Bundle bundle = data.getExtras();
             String scanResult = bundle.getString(Constant.INTENT_EXTRA_KEY_QR_SCAN);
-
-            String[] tmp = scanResult.split("/");
-            if (tmp.length != 2) {
-                Toast.makeText(MainActivity.this, "二维码错误，请您扫描网站上显示的二维码!", Toast.LENGTH_SHORT).show();
-                return;
-            }
-            VpayConstant.SERVER_HOST = tmp[0];
-            VpayConstant.SERVER_KEY = tmp[1];
-
-            API.heartbeat(res -> VpayConstant.isOk = true);
-
-            // 将扫描出的信息显示出来
-            txthost.setText(String.format(" 通知地址：%s", tmp[0]));
-            txtkey.setText(String.format(" 通讯密钥：%s", tmp[1]));
-
-            SharedPreferences.Editor editor = getSharedPreferences("vone", MODE_PRIVATE).edit();
-            editor.putString("host", VpayConstant.SERVER_HOST);
-            editor.putString("key", VpayConstant.SERVER_KEY);
-            editor.apply();
+            this.parseConfiguration(scanResult);
         }
     }
 
@@ -285,5 +243,36 @@ public class MainActivity extends AppCompatActivity {
                 }
                 break;
         }
+    }
+
+    private void parseConfiguration(String config) {
+        String[] temp = config.split("/");
+        if (temp.length < 2) {
+            Toast.makeText(MainActivity.this, "数据错误，请您输入网站上显示的配置数据!", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (temp[0].contains("localhost")) {
+            Toast.makeText(MainActivity.this, "配置信息错误，本机调试请访问 本机局域网IP:8080(如192.168.1.101:8080) 获取配置信息进行配置!", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        VpayConstant.SERVER_HOST = Utils.formatHost(temp[0]);
+        VpayConstant.SERVER_KEY = temp[1];
+        if (temp.length >= 3) {
+            VpayConstant.SERVER_ACCOUNT = temp[2];
+        }
+
+        Api.heartbeat(data -> VpayConstant.isOk = true);
+
+        // 将扫描出的信息显示出来
+        txtAccount.setText(String.format(" 通知地址：%s", VpayConstant.SERVER_ACCOUNT));
+        txtHost.setText(String.format(" 通知地址：%s", VpayConstant.SERVER_HOST));
+        txtKey.setText(String.format(" 通讯密钥：%s", VpayConstant.SERVER_KEY));
+
+        SharedPreferences.Editor editor = getSharedPreferences("vone", MODE_PRIVATE).edit();
+        editor.putString("account", VpayConstant.SERVER_ACCOUNT);
+        editor.putString("host", VpayConstant.SERVER_HOST);
+        editor.putString("key", VpayConstant.SERVER_KEY);
+        editor.apply();
     }
 }

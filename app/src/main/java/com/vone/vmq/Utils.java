@@ -13,11 +13,6 @@ import android.provider.Settings;
 import android.text.TextUtils;
 import com.vone.qrcode.R;
 import com.vone.vmq.util.FileUtils;
-import com.vone.vmq.util.VpayConstant;
-import okhttp3.Interceptor;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.Response;
 
 import java.io.BufferedWriter;
 import java.io.File;
@@ -30,7 +25,6 @@ import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.Locale;
-import java.util.concurrent.TimeUnit;
 
 import static android.content.Context.NOTIFICATION_SERVICE;
 import static android.content.Context.POWER_SERVICE;
@@ -42,23 +36,6 @@ public class Utils {
     private final static String dayType = "yyyy-MM-dd HH:mm:ss";
     private final static String hourType = "HH:mm:ss";
     private static int notifyDay = -1;
-    private static OkHttpClient okHttpClient;
-
-    public static OkHttpClient getOkHttpClient() {
-        if (okHttpClient == null) {
-            synchronized (Utils.class) {
-                if (okHttpClient == null) {
-                    okHttpClient = new OkHttpClient.Builder()
-                            .addInterceptor(new UserAgentInterceptor())
-                            .connectTimeout(5, TimeUnit.SECONDS)
-                            .readTimeout(5, TimeUnit.SECONDS)
-                            .writeTimeout(5, TimeUnit.SECONDS)
-                            .build();
-                }
-            }
-        }
-        return okHttpClient;
-    }
 
     static void putStr(Context context, String value) {
         if (context == null) {
@@ -251,20 +228,17 @@ public class Utils {
         }
         return "";
     }
-}
 
-/**
- * 添加请求头
- */
-class UserAgentInterceptor implements Interceptor {
-    @Override
-    public Response intercept(Chain chain) throws IOException {
-        long now = System.currentTimeMillis();
-        Request request = chain.request().newBuilder()
-                .header("Vpay-Account", VpayConstant.VPAY_ADMIN)
-                .header("Vpay-Time", String.valueOf(now))
-                .header("Vpay-Sign", Utils.md5(now + VpayConstant.SERVER_KEY))
-                .build();
-        return chain.proceed(request);
+    public static String formatHost(String host) {
+        if (TextUtils.isEmpty(host)) {
+            return "";
+        }
+        if (host.endsWith("/")) {
+            host = host.substring(0, host.length() - 1);
+        }
+        if (!host.startsWith("http://")) {
+            host = "http://" + host;
+        }
+        return host;
     }
 }

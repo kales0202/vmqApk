@@ -4,7 +4,6 @@ import android.annotation.SuppressLint;
 import android.app.Notification;
 import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -17,28 +16,21 @@ import android.util.Log;
 import android.widget.Toast;
 import androidx.core.app.NotificationCompat;
 import com.vone.qrcode.R;
-import com.vone.vmq.util.API;
-import okhttp3.Call;
-import okhttp3.Callback;
-import okhttp3.Request;
-import okhttp3.Response;
+import com.vone.vmq.util.Api;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import java.io.IOException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Calendar;
-import java.util.Date;
 import java.util.List;
 
 public class NeNotificationService2 extends NotificationListenerService {
     public static boolean isRunning;
     private static String TAG = "NeNotificationService2";
     private final Handler handler = new Handler(Looper.getMainLooper());
-    private String host = "";
-    private String key = "";
     private Thread newThread = null;
     private PowerManager.WakeLock mWakeLock = null;
 
@@ -145,9 +137,9 @@ public class NeNotificationService2 extends NotificationListenerService {
         newThread = new Thread(() -> {
             Log.d(TAG, "心跳线程启动！");
             while (isRunning && newThread == Thread.currentThread()) {
-                API.heartbeat(
+                Api.heartbeat(
                         data -> Log.d(TAG, "heartbeat response data:" + data),
-                        error -> foregroundHeart(API.getUrlHeartbeat())
+                        error -> foregroundHeart(Api.getUrlHeartbeat())
                 );
                 try {
                     Thread.sleep(30 * 1000);
@@ -169,9 +161,6 @@ public class NeNotificationService2 extends NotificationListenerService {
             Log.d(TAG, "群组摘要通知，忽略");
             return;
         }
-        SharedPreferences read = getSharedPreferences("vone", MODE_PRIVATE);
-        host = read.getString("host", "");
-        key = read.getString("key", "");
 
         Notification notification = sbn.getNotification();
         String pkg = sbn.getPackageName();
@@ -188,67 +177,55 @@ public class NeNotificationService2 extends NotificationListenerService {
                 // to string (企业微信之类的 getString 会出错，换getCharSequence)
                 String title = _title.toString();
                 String content = _content.toString();
-                if ("com.eg.android.AlipayGphone".equals(pkg)) {
-                    if (!content.equals("")) {
-                        if (content.contains("通过扫码向你付款") || content.contains("成功收款")
-                                || title.contains("通过扫码向你付款") || title.contains("成功收款")
-                                || content.contains("店员通") || title.contains("店员通")) {
-                            String money;
-                            // 新版支付宝，会显示积分情况下。先匹配标题上的金额
-                            if (content.contains("商家积分")) {
-                                money = getMoney(title);
-                                if (money == null) {
-                                    money = getMoney(content);
-                                }
-                            } else {
+                if (Constant.PKG_ALIPAY.equals(pkg)) {
+                    if (content.equals("")) {
+                        return;
+                    }
+                    String[] matches = {"通过扫码向你付款", "成功收款", "店员通"};
+                    if (Arrays.stream(matches).anyMatch(title::contains)
+                            || Arrays.stream(matches).anyMatch(content::contains)) {
+                        String money;
+                        // 新版支付宝，会显示积分情况下。先匹配标题上的金额
+                        if (content.contains("商家积分")) {
+                            money = getMoney(title);
+                            if (money == null) {
                                 money = getMoney(content);
-                                if (money == null) {
-                                    money = getMoney(title);
-                                }
                             }
-                            if (money != null) {
-                                Log.d(TAG, "onAccessibilityEvent: 匹配成功： 支付宝 到账 " + money);
-                                appPush(2, Double.parseDouble(money));
-                            } else {
-                                handler.post(new Runnable() {
-                                    public void run() {
-                                        Toast.makeText(getApplicationContext(), "监听到支付宝消息但未匹配到金额！", Toast.LENGTH_SHORT).show();
-                                    }
-                                });
+                        } else {
+                            money = getMoney(content);
+                            if (money == null) {
+                                money = getMoney(title);
                             }
                         }
+                        if (money != null) {
+                            Log.d(TAG, "onAccessibilityEvent: 匹配成功： 支付宝 到账 " + money);
+                            appPush(2, Double.parseDouble(money));
+                        } else {
+                            handler.post(() -> Toast.makeText(getApplicationContext(), "监听到支付宝消息但未匹配到金额！", Toast.LENGTH_SHORT).show());
+                        }
                     }
-                } else if ("com.tencent.mm".equals(pkg)
-                        || "com.tencent.wework".equals(pkg)) {
-                    if (!content.equals("")) {
-                        if (title.equals("微信支付") || title.equals("微信收款助手") || title.equals("微信收款商业版")
-                                || (title.equals("对外收款") || title.equals("企业微信")) &&
-                                (content.contains("成功收款") || content.contains("收款通知"))) {
-                            String money = getMoney(content);
-                            if (money != null) {
-                                Log.d(TAG, "onAccessibilityEvent: 匹配成功： 微信到账 " + money);
-                                try {
-                                    appPush(1, Double.parseDouble(money));
-                                } catch (Exception e) {
-                                    Log.d(TAG, "app push 错误！！！");
-                                }
-                            } else {
-                                handler.post(new Runnable() {
-                                    public void run() {
-                                        Toast.makeText(getApplicationContext(), "监听到微信消息但未匹配到金额！", Toast.LENGTH_SHORT).show();
-                                    }
-                                });
+                } else if (Constant.PKG_WECHAT.equals(pkg) || Constant.PKG_WEWORK.equals(pkg)) {
+                    if (content.equals("")) {
+                        return;
+                    }
+                    if (title.equals("微信支付") || title.equals("微信收款助手") || title.equals("微信收款商业版")
+                            || (title.equals("对外收款") || title.equals("企业微信")) &&
+                            (content.contains("成功收款") || content.contains("收款通知"))) {
+                        String money = getMoney(content);
+                        if (money != null) {
+                            Log.d(TAG, "onAccessibilityEvent: 匹配成功： 微信到账 " + money);
+                            try {
+                                appPush(1, Double.parseDouble(money));
+                            } catch (Exception e) {
+                                Log.d(TAG, "app push 错误！！！");
                             }
-
+                        } else {
+                            handler.post(() -> Toast.makeText(getApplicationContext(), "监听到微信消息但未匹配到金额！", Toast.LENGTH_SHORT).show());
                         }
                     }
                 } else if ("com.vone.qrcode".equals(pkg)) {
                     if (content.equals("这是一条测试推送信息，如果程序正常，则会提示监听权限正常")) {
-                        handler.post(new Runnable() {
-                            public void run() {
-                                Toast.makeText(getApplicationContext(), "监听正常，如无法正常回调请联系作者反馈！", Toast.LENGTH_SHORT).show();
-                            }
-                        });
+                        handler.post(() -> Toast.makeText(getApplicationContext(), "监听正常，如无法正常回调请联系作者反馈！", Toast.LENGTH_SHORT).show());
                     }
                 }
             }
@@ -290,7 +267,7 @@ public class NeNotificationService2 extends NotificationListenerService {
             return;
         }
         Log.i(TAG, "write notify message to file");
-        //            具有写入权限，否则不写入
+        // 具有写入权限，否则不写入
         CharSequence notificationTitle = null;
         CharSequence notificationText = null;
         CharSequence subText = null;
@@ -317,40 +294,16 @@ public class NeNotificationService2 extends NotificationListenerService {
      */
     public void appPush(int type, double price) {
         acquireWakeLock(this);
-        SharedPreferences read = getSharedPreferences("vone", MODE_PRIVATE);
-        host = read.getString("host", "");
-        key = read.getString("key", "");
-
-        Log.d(TAG, "onResponse  push: 开始:" + type + "  " + price);
-
-        String t = String.valueOf(new Date().getTime());
-        String sign = md5(type + "" + price + t + key);
-        final String url = "http://" + host + "/appPush?t=" + t + "&type=" + type + "&price=" + price + "&sign=" + sign;
-        Log.d(TAG, "onResponse  push: 开始:" + url);
-        Request request = new Request.Builder().url(url).method("GET", null).build();
-        Call call = Utils.getOkHttpClient().newCall(request);
-        call.enqueue(new Callback() {
-            @Override
-            public void onFailure(Call call, IOException e) {
-                Log.e(TAG, "onResponse  push: 请求失败", e);
-                foregroundPost(url + "&force_push=true");
-                releaseWakeLock();
-            }
-
-            @Override
-            public void onResponse(Call call, Response response) throws IOException {
-                try {
-                    Log.d(TAG, "onResponse  push: " + response.body().string());
-                } catch (Exception e) {
-                    e.printStackTrace();
+        Api.push(type, price,
+                data -> {
+                    Log.d(TAG, "push response data: " + data);
+                    releaseWakeLock();
+                },
+                error -> {
+                    foregroundPost(Api.getUrlPush() + "type=" + type + "&price=" + price + "&force_push=true");
+                    releaseWakeLock();
                 }
-                // 如果返回状态不是成功的。同样要回调
-                if (!response.isSuccessful()) {
-                    foregroundPost(url + "&force_push=true");
-                }
-                releaseWakeLock();
-            }
-        });
+        );
     }
 
     private void foregroundHeart(String url) {

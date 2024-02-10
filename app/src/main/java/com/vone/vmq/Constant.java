@@ -13,4 +13,8 @@ public class Constant {
     public final static String UPDATA_MESSAGE_DATA_ACTION = "updata_message_data_action";
     public final static String FINISH_FOREGROUND_SERVICE = "finish_foreground_service";
 
+    public final static String PKG_ALIPAY = "com.eg.android.AlipayGphone";
+    public final static String PKG_WECHAT = "com.tencent.mm";
+    public final static String PKG_WEWORK = "com.tencent.wework";
+
 }
