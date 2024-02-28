@@ -101,32 +101,25 @@ public class NeNotificationService2 extends NotificationListenerService {
     // 申请设备电源锁
     @SuppressLint("InvalidWakeLockTag")
     public void acquireWakeLock(final Context context) {
-        handler.post(new Runnable() {
-            @Override
-            public void run() {
-                if (null == mWakeLock) {
-                    PowerManager pm = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
-                    if (pm != null) {
-                        mWakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK | PowerManager.ON_AFTER_RELEASE, "WakeLock");
-                    }
-                }
-                if (null != mWakeLock) {
-                    mWakeLock.acquire(5000);
+        handler.post(() -> {
+            if (null == mWakeLock) {
+                PowerManager pm = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
+                if (pm != null) {
+                    mWakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK | PowerManager.ON_AFTER_RELEASE, "WakeLock");
                 }
             }
+            if (null != mWakeLock) {
+                mWakeLock.acquire(5000);
+            }
         });
-
     }
 
     // 释放设备电源锁
     public void releaseWakeLock() {
-        handler.post(new Runnable() {
-            @Override
-            public void run() {
-                if (null != mWakeLock) {
-                    mWakeLock.release();
-                    mWakeLock = null;
-                }
+        handler.post(() -> {
+            if (null != mWakeLock) {
+                mWakeLock.release();
+                mWakeLock = null;
             }
         });
     }
@@ -217,7 +210,7 @@ public class NeNotificationService2 extends NotificationListenerService {
                             try {
                                 appPush(1, Double.parseDouble(money));
                             } catch (Exception e) {
-                                Log.d(TAG, "app push 错误！！！");
+                                Log.e(TAG, "app push 错误！！！", e);
                             }
                         } else {
                             handler.post(() -> Toast.makeText(getApplicationContext(), "监听到微信消息但未匹配到金额！", Toast.LENGTH_SHORT).show());
@@ -300,6 +293,7 @@ public class NeNotificationService2 extends NotificationListenerService {
                     releaseWakeLock();
                 },
                 error -> {
+                    Log.e(TAG, "push response error", error);
                     foregroundPost(Api.getUrlPush() + "type=" + type + "&price=" + price + "&force_push=true");
                     releaseWakeLock();
                 }

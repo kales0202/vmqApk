@@ -236,8 +236,8 @@ public class Utils {
         if (host.endsWith("/")) {
             host = host.substring(0, host.length() - 1);
         }
-        if (!host.startsWith("http://")) {
-            host = "http://" + host;
+        if (!host.startsWith("http")) {
+            host = "https://" + host;
         }
         return host;
     }
